@@ -85,7 +85,8 @@ namespace asp{
     BBox3& m_global_bbox;
     std::vector<BBoxPair>& m_point_image_boundaries;
     ImageViewRef<double> const& m_error_image;
-    double m_estim_max_error; // used for outlier removal based on percentage
+    double m_estim_max_error;   // used for outlier removal by tri error based on percentage
+    vw::BBox3 m_estim_proj_box; // used for outlier removal in the bounding box computation
     std::vector<double> & m_errors_hist;
     double m_max_valid_triangulation_error; // used for outlier removal based on thresh
     Mutex& m_mutex;
@@ -111,64 +112,81 @@ namespace asp{
         if (err == 0) return; // null errors come from invalid pixels
         int len = m_hist.size();
         int k = round((len-1)*std::min(err, m_max_val)/m_max_val);
-        m_hist[k]++;
+        if (k >= 0 && k < len) {
+          // This is a bugfix for an observed situation when err is NaN.
+          // In that case the rounding returns a negative integer.
+          m_hist[k]++;
+        }
       }
     };
 
   public:
-    SubBlockBoundaryTask( ImageViewRef<Vector3> const& view,
-                          int sub_block_size,
-                          BBox2i const& image_bbox,
-                          BBox3       & global_bbox, 
-                          std::vector<BBoxPair>& boundaries,
-                          ImageViewRef<double> const& error_image, double estim_max_error,
-                          std::vector<double> & errors_hist,
-                          double max_valid_triangulation_error,
-                          Mutex& mutex, const ProgressCallback& progress, float inc_amt ) :
+    SubBlockBoundaryTask(ImageViewRef<Vector3> const& view,
+                         int sub_block_size,
+                         BBox2i const& image_bbox,
+                         BBox3       & global_bbox, 
+                         std::vector<BBoxPair>& boundaries,
+                         ImageViewRef<double> const& error_image,
+                         double estim_max_error,
+                         vw::BBox3 const& estim_proj_box,
+                         std::vector<double> & errors_hist,
+                         double max_valid_triangulation_error,
+                         Mutex& mutex, const ProgressCallback& progress, float inc_amt ) :
       m_view(view.impl()), m_sub_block_size(sub_block_size),
       m_image_bbox(image_bbox),
       m_global_bbox(global_bbox), m_point_image_boundaries( boundaries ),
       m_error_image(error_image), m_estim_max_error(estim_max_error),
+      m_estim_proj_box(estim_proj_box),
       m_errors_hist(errors_hist), m_max_valid_triangulation_error(max_valid_triangulation_error),
       m_mutex( mutex ), m_progress( progress ), m_inc_amt( inc_amt ) {}
       
     void operator()() {
-      ImageView<Vector3 > local_image = crop( m_view, m_image_bbox );
+      ImageView<Vector3> local_image = crop(m_view, m_image_bbox);
 
       bool remove_outliers_with_pct = (!m_errors_hist.empty());
       ImageView<double> local_error;
       if (remove_outliers_with_pct || m_max_valid_triangulation_error > 0.0)
         local_error = crop( m_error_image, m_image_bbox );
-
-      // Further subdivide into boundaries so
-      // that prerasterize will only query what it needs.
-      std::vector<BBox2i> blocks = subdivide_bbox( m_image_bbox, m_sub_block_size, m_sub_block_size );
+      
+      // Further subdivide into boundaries so that prerasterize will
+      // only query what it needs.
+      std::vector<BBox2i> blocks = subdivide_bbox(m_image_bbox, m_sub_block_size, m_sub_block_size);
       BBox3 local_union;
       std::list<BBoxPair> solutions;
       std::vector<double> local_hist(m_errors_hist.size(), 0);
-      for ( size_t i = 0; i < blocks.size(); i++ ) {
+      bool nonempty_estim_proj_box = (!m_estim_proj_box.empty());
       
+      for ( size_t i = 0; i < blocks.size(); i++ ) {
         BBox3 pts_bdbox;
-        ImageView<Vector3 > local_image2 = crop( local_image, blocks[i] - m_image_bbox.min() );
-        if (m_max_valid_triangulation_error <= 0){
-          GrowBBoxAccumulator accum;
-          for_each_pixel( local_image2, accum );
-          pts_bdbox = accum.bbox;
-        }else{
-          // Skip points with error > m_max_valid_triangulation_error
-          ImageView<double> local_error2 =
-            crop( local_error, blocks[i] - m_image_bbox.min() );
-          for (int col = 0; col < local_image2.cols(); col++){
-            for (int row = 0; row < local_image2.rows(); row++){
-              if (boost::math::isnan(local_image2(col, row).z()))
-                continue;
-              if (local_error2(col, row) > m_max_valid_triangulation_error)
-                continue;
-              pts_bdbox.grow(local_image2(col, row));
+        ImageView<Vector3> local_image2 = crop(local_image, blocks[i] - m_image_bbox.min());
+
+        // See if to filter by user-provided m_max_valid_triangulation_error.
+        // If this is not provided we will later estimate and use such a value automatically
+        // when doing the gridding.
+        ImageView<double> local_error2;
+        if (m_max_valid_triangulation_error > 0)
+          local_error2 = crop(local_error, blocks[i] - m_image_bbox.min());
+
+        for (int col = 0; col < local_image2.cols(); col++){
+          for (int row = 0; row < local_image2.rows(); row++){
+            
+            // Skip invalid points
+            if (boost::math::isnan(local_image2(col, row).z()))
+              continue;
+            
+            // Skip outliers, points not in the estimated bounding box
+            if (nonempty_estim_proj_box && !m_estim_proj_box.contains(local_image2(col, row))) {
+              continue;
             }
+            
+            if (m_max_valid_triangulation_error > 0 &&
+                local_error2(col, row) > m_max_valid_triangulation_error)
+              continue;
+            
+            pts_bdbox.grow(local_image2(col, row));
           }
         }
-
+        
         if ( pts_bdbox.min().x() <= pts_bdbox.max().x() &&
              pts_bdbox.min().y() <= pts_bdbox.max().y() ) {
           // pts_bdbox has at least one point. A box of just one
@@ -177,7 +195,7 @@ namespace asp{
           // Note: for local_union, which will end up contributing
           // to the global bounding box, we don't use the float_next
           // gimmick, as we need the precise box.
-          local_union.grow( pts_bdbox );
+          local_union.grow(pts_bdbox);
           pts_bdbox.max()[0] = boost::math::float_next(pts_bdbox.max()[0]);
           pts_bdbox.max()[1] = boost::math::float_next(pts_bdbox.max()[1]);
           solutions.push_back( std::make_pair( pts_bdbox, blocks[i] ) );
@@ -187,13 +205,12 @@ namespace asp{
           ErrorHistAccumulator error_accum(local_hist, m_estim_max_error);
           for_each_pixel( crop( local_error, blocks[i] - m_image_bbox.min() ),
                           error_accum );
-
         }
 
       }
 
-      // Append to the global list of boxes and expand the point
-      // cloud bounding box.
+      // Append to the global list of boxes and expand the point cloud
+      // bounding box.
       if ( local_union != BBox3() ) {
         Mutex::Lock lock( m_mutex );
         for ( std::list<BBoxPair>::const_iterator it = solutions.begin();
@@ -335,15 +352,13 @@ namespace asp{
       image = copy(buffer);
   }
 
-
-
-
   OrthoRasterizerView::OrthoRasterizerView
   (ImageViewRef<Vector3> point_image, ImageViewRef<double> texture,
    double search_radius_factor, double sigma_factor, bool use_surface_sampling, int pc_tile_size,
    vw::BBox2 const& projwin,
    bool remove_outliers_with_pct, Vector2 const& remove_outliers_params,
-   ImageViewRef<double> const& error_image, double estim_max_error,
+   ImageViewRef<double> const& error_image,
+   double estim_max_error, vw::BBox3 const& estim_proj_box,
    double max_valid_triangulation_error,
    Vector2 median_filter_params, int erode_len, bool has_las_or_csv,
    std::string const& filter,
@@ -382,9 +397,9 @@ namespace asp{
     else if (filter == "nmad"            ) m_filter = asp::f_nmad;
     else if (sscanf (filter.c_str(), "%lf-pct", &m_percentile) == 1)
       m_filter = asp::f_percentile;
-  else
+    else
     vw_throw( ArgumentErr() << "OrthoRasterize: unknown filter: " << filter << ".\n" );
-
+    
     //dump_image("img", BBox2(0, 0, 3000, 3000), point_image);
 
     // Compute the bounding box that encompasses tiles within the image
@@ -410,8 +425,7 @@ namespace asp{
     sub_block_size = int(round(pow(2.0, floor(log(sub_block_size)/log(2.0)))));
     sub_block_size = std::max(16, sub_block_size);
     sub_block_size = std::min(max_subblock_size(), sub_block_size);
-    std::vector<BBox2i> blocks =
-      subdivide_bbox( m_point_image, m_block_size, m_block_size );
+    std::vector<BBox2i> blocks = subdivide_bbox(m_point_image, m_block_size, m_block_size);
 
     // Find the bounding box of each subblock, stored in
     // m_point_image_boundaries, together with other info by
@@ -422,12 +436,12 @@ namespace asp{
     float inc_amt = 1.0 / float(blocks.size());
     for ( size_t i = 0; i < blocks.size(); i++ ) {
       boost::shared_ptr<task_type>
-        task( new task_type( m_point_image, sub_block_size, blocks[i],
-                             m_bbox, m_point_image_boundaries,
-                             error_image, estim_max_error, errors_hist,
-                             max_valid_triangulation_error,
-                             mutex, progress, inc_amt ) );
-      queue.add_task( task );
+        task(new task_type(m_point_image, sub_block_size, blocks[i],
+                           m_bbox, m_point_image_boundaries,
+                           error_image, estim_max_error, estim_proj_box, errors_hist,
+                           max_valid_triangulation_error,
+                           mutex, progress, inc_amt));
+      queue.add_task(task);
     }
     queue.join_all();
     progress.report_finished();
@@ -473,7 +487,6 @@ namespace asp{
       vw_out() << "Manual triangulation error cutoff is " << m_error_cutoff
                << " meters.\n";
     }
-
 
     // Find the width and height of the median point cloud pixel in
     // projected coordinates. For las or csv files, this approach
@@ -804,7 +817,6 @@ namespace asp{
                                              -bbox_1.min().y(), cols(), rows()));
   }
 
-
   // Return the affine georeferencing transform.
   vw::Matrix<double,3,3> OrthoRasterizerView::geo_transform() {
     vw::Matrix<double,3,3> geo_transform;
@@ -814,58 +826,6 @@ namespace asp{
     geo_transform(0,2) = m_snapped_bbox.min().x();
     geo_transform(1,2) = m_snapped_bbox.max().y();
     return geo_transform;
-  }
-
-  // To do: This code is not enabled yet.
-  void OrthoRasterizerView::find_bdbox_robust_to_outliers
-  (std::vector<BBoxPair> const& point_image_boundaries, BBox3 & bbox){
-
-    using namespace vw::math;
-
-    double pct = 0.1;
-    double outlier_factor = 1.5;
-    double ctrx_min, ctrx_max, ctry_min, ctry_max;
-    double widx_min, widx_max, widy_min, widy_max;
-
-    int len = point_image_boundaries.size();
-    std::vector<double> vx, vy;
-
-    // Find the reasonable box widths
-    vx.reserve(len); vx.clear();
-    vy.reserve(len); vy.clear();
-    BOOST_FOREACH( BBoxPair const& boundary, point_image_boundaries ) {
-      if (boundary.first.empty()) continue;
-      vx.push_back(boundary.first.width());
-      vy.push_back(boundary.first.height());
-    }
-    find_outlier_brackets(vx, pct, outlier_factor, widx_min, widx_max);
-    find_outlier_brackets(vy, pct, outlier_factor, widy_min, widy_max);
-
-    // Find the reasonable box centers. Note: We reuse the same
-    // vectors vx and vy to save on memory, as they can be very
-    // large.
-    vx.reserve(len); vx.clear();
-    vy.reserve(len); vy.clear();
-    BOOST_FOREACH( BBoxPair const& boundary, point_image_boundaries ) {
-      if (boundary.first.empty()) continue;
-      vx.push_back(boundary.first.center().x());
-      vy.push_back(boundary.first.center().y());
-    }
-    find_outlier_brackets(vx, pct, outlier_factor, ctrx_min, ctrx_max);
-    find_outlier_brackets(vy, pct, outlier_factor, ctry_min, ctry_max);
-
-    // Redo the bounding box computation, excluding outliers
-    bbox = BBox3();
-    BOOST_FOREACH( BBoxPair const& boundary, point_image_boundaries ) {
-      BBox3 b = boundary.first;
-      if (b.empty()) continue;
-      if ( b.width()  < widx_min || b.width()  > widx_max ) continue;
-      if ( b.height() < widy_min || b.height() > widy_max ) continue;
-      if ( b.center().x()  < ctrx_min || b.center().x() > ctrx_max ) continue;
-      if ( b.center().y()  < ctry_min || b.center().y() > ctry_max ) continue;
-      bbox.grow(b);
-    }
-
   }
 
 } // namespace asp

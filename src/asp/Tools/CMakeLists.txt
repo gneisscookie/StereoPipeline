@@ -64,10 +64,6 @@ add_executable(opencv_imagelist_creator opencv_imagelist_creator.cpp)
 target_link_libraries(opencv_imagelist_creator AspCore)
 install(TARGETS opencv_imagelist_creator DESTINATION libexec)
 
-add_executable(bundlevis bundlevis.cc)
-target_link_libraries(bundlevis ${FULL_LIBRARY_LIST} AspCore ${OPENSCENEGRAPH_LIBRARIES})
-install(TARGETS bundlevis DESTINATION bin)
-
 add_executable(dem_geoid dem_geoid.cc)
 target_link_libraries(dem_geoid AspCore ${GEOID_LIBRARIES})
 install(TARGETS dem_geoid DESTINATION bin)
@@ -118,12 +114,12 @@ install(TARGETS pc_merge DESTINATION bin)
 
 add_executable(pc_align pc_align.cc pc_align_utils.h pc_align_utils.tcc)
 target_link_libraries(pc_align AspSessions ${SOLVER_LIBRARIES} 
-  ${LIBPOINTMATCHER_LIBRARIES} ${FASTGLOBALREGISTRATION_LIBRARIES} )
+  ${LIBPOINTMATCHER_LIBRARIES} ${LIBNABO_LIBRARIES} ${FASTGLOBALREGISTRATION_LIBRARIES} )
 install(TARGETS pc_align DESTINATION bin)
 
 add_executable(n_align n_align.cc pc_align_utils.h pc_align_utils.tcc)
 target_link_libraries(n_align AspSessions ${SOLVER_LIBRARIES} 
-  ${LIBPOINTMATCHER_LIBRARIES} ${FASTGLOBALREGISTRATION_LIBRARIES} )
+  ${LIBPOINTMATCHER_LIBRARIES} ${LIBNABO_LIBRARIES} ${FASTGLOBALREGISTRATION_LIBRARIES} )
 install(TARGETS n_align DESTINATION bin)
 
 add_executable(pansharp pansharp.cc)
@@ -143,7 +139,7 @@ target_link_libraries(point2las AspCore ${LIBLAS_LIBRARIES})
 install(TARGETS point2las DESTINATION bin)
 
 add_executable(point2mesh point2mesh.cc)
-target_link_libraries(point2mesh AspCore ${OPENSCENEGRAPH_LIBRARIES})
+target_link_libraries(point2mesh AspCore)
 install(TARGETS point2mesh DESTINATION bin)
 
 add_executable(add_spot_rpc add_spot_rpc.cc)

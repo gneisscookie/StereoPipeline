@@ -4,7 +4,10 @@ RELEASE 2.7.0, Upcoming!
 New functionality
    * Support for the Community Sensor Model
      (https://github.com/USGS-Astrogeology/usgscsm)
-
+   * Support for ISIS version 4.1.10. Please set ISISDATA instead of
+     ISIS3DATA with this version of ISIS and ASP.
+   * Ability to install ASP with conda. See INSTALLGUIDE.rst for details.
+ 
 bundle_adjust
    * Can first create interest point matches among mapprojected images
      (automatically or manually) and use those to create matches among
@@ -31,8 +34,27 @@ hiedr2mosaic.py
      assuming that there is no jitter correction between the two
      CCDs that had no matches.
 
+point2dem:
+   * Use outlier filtering when computing the bounding box of a DEM.
+     The same option ``--remove-outliers-params`` controls this
+     just as for removing outliers by triangulation error.
+
+mapproject:
+   * Fixed a bug when finding the extent of the mapprojected
+     image when the DEM to project onto spans the whole planet.
+
+point2mesh:
+   * Only meshes in .obj format are created. This format can be opened
+     in Meshlab, Blender, or some other mesh viewer.
+   * The osgviewer program is no longer shipped.
+   * Fixed a bug with invalid points not being filtered.
+   * Fixed a bug with insufficient precision (now it can be set 
+     by the user and defaults to 17 digits).
+   * Added the option --texture-step-size to control the sampling
+     rate for the texture, in addition to the -s option that controls
+     the sampling rate for the point cloud.
+
 Misc
-   * Compiled against ISIS version 3.8.0.
    * Updated to C++ 11.
    * The Linux build system upgraded to CentOS 7.6, using conda
      for many dependencies, with gcc 5, glibc 2.17, and Python version

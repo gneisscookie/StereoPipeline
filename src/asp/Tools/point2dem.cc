@@ -918,14 +918,12 @@ namespace asp{
 } // end namespace asp
 
 
-
-/// Do more work!
-void do_software_rasterization( asp::OrthoRasterizerView& rasterizer,
-                                Options& opt,
-                                cartography::GeoReference& georef,
-                                ImageViewRef<double> const& error_image,
-                                double estim_max_error,
-                                size_t *num_invalid_pixels) {
+void do_software_rasterization(asp::OrthoRasterizerView& rasterizer,
+                               Options& opt,
+                               cartography::GeoReference& georef,
+                               ImageViewRef<double> const& error_image,
+                               double estim_max_error,
+                               size_t *num_invalid_pixels) {
 
   vw_out() << "\t-- Starting DEM rasterization --\n";
   vw_out() << "\t--> DEM spacing: " <<     rasterizer.spacing() << " pt/px\n";
@@ -1155,11 +1153,12 @@ void do_software_rasterization( asp::OrthoRasterizerView& rasterizer,
 
 
 // Wrapper for do_software_rasterization that goes through all spacing values
-void do_software_rasterization_multi_spacing(const ImageViewRef<Vector3>& proj_point_input,
+void do_software_rasterization_multi_spacing(const ImageViewRef<Vector3>& proj_points,
                                              Options& opt,
                                              cartography::GeoReference& georef,
                                              ImageViewRef<double> const& error_image,
-                                             double estim_max_error) {
+                                             double estim_max_error,
+                                             vw::BBox3 const& estim_proj_box) {
   // Perform the slow initialization that can be shared by all output resolutions
   Stopwatch sw1;
   sw1.start();
@@ -1167,12 +1166,12 @@ void do_software_rasterization_multi_spacing(const ImageViewRef<Vector3>& proj_p
   size_t num_invalid_pixels = 0; // Need to pass in by pointer because we can't get back the number from
                                  //  the original rasterizer object otherwise for some reason.
   asp::OrthoRasterizerView
-    rasterizer(proj_point_input.impl(), select_channel(proj_point_input.impl(),2),
+    rasterizer(proj_points.impl(), select_channel(proj_points.impl(),2),
                opt.search_radius_factor, opt.sigma_factor, opt.use_surface_sampling,
                asp::ASPGlobalOptions::tri_tile_size(), // to efficiently process the cloud
                opt.target_projwin,
                opt.remove_outliers_with_pct, opt.remove_outliers_params,
-               error_image, estim_max_error, opt.max_valid_triangulation_error,
+               error_image, estim_max_error, estim_proj_box, opt.max_valid_triangulation_error,
                opt.median_filter_params, opt.erode_len, opt.has_las_or_csv_or_pcd,
                opt.filter, opt.default_grid_size_multiplier,
                &num_invalid_pixels, &count_mutex,
@@ -1207,14 +1206,61 @@ void do_software_rasterization_multi_spacing(const ImageViewRef<Vector3>& proj_p
   opt.out_prefix = base_out_prefix; // Restore the original value
 }
 
+// Sample the image and get generous estimates (but without outliers)
+// of the maximum triangulation error and of the 3D box containing the
+// projected points. These will be tightened later.
+double estim_max_tri_error_and_proj_box(ImageViewRef<Vector3> const& proj_points,
+                                        ImageViewRef<double> const& error_image,
+                                        Vector2 const& remove_outliers_params,
+                                        BBox3 & estim_proj_box) {
+
+  // Initialize the outputs
+  double estim_max_error = 0.0;
+  estim_proj_box = BBox3();
+
+  // Start with a 256 (2^8) by 256 sampling of the cloud
+  bool success = false;
+  for (int attempt = 8; attempt <= 18; attempt++){
+    
+    double sample = (1 << attempt);
+    int32 subsample_amt = int32(norm_2(Vector2(error_image.cols(), error_image.rows()))/sample);
+    if (subsample_amt < 1 )
+      subsample_amt = 1;
+    
+    Stopwatch sw2;
+    sw2.start();
+    PixelAccumulator<asp::ErrorRangeEstimAccum> error_accum;
+    for_each_pixel(subsample(error_image, subsample_amt),
+                   error_accum,
+                   TerminalProgressCallback
+                   ("asp","Bounding box and triangulation error range estimation: ") );
+    if (error_accum.size() > 0){
+      success = true;
+      estim_max_error = error_accum.value(remove_outliers_params);
+    }
+    sw2.stop();
+
+    asp::estimate_points_bdbox(subsample(proj_points, subsample_amt),  
+                               remove_outliers_params,  
+                               estim_proj_box);
+    
+    if (estim_proj_box.empty()) 
+      success = false;
+    
+    vw_out(DebugMessage,"asp") << "Elapsed time: " << sw2.elapsed_seconds() << std::endl;
+    if (success || subsample_amt == 1) break;
+    vw_out() << "Estimation failed. Check if your cloud is valid. "
+             << "Trying again with finer sampling.\n";
+  }
+  return estim_max_error;
+}
 
 //-----------------------------------------------------------------------------------
 
 int main( int argc, char *argv[] ) {
-
   Options opt;
   try {
-    handle_arguments( argc, argv, opt );
+    handle_arguments(argc, argv, opt);
 
     // Set up the georeferencing information.  We specify everything
     // here except for the affine transform, which is defined later once
@@ -1272,68 +1318,37 @@ int main( int argc, char *argv[] ) {
 
     // Generate a merged xyz point cloud consisting of all inputs
     // - By now, each input exists in xyz tif format.
-    ImageViewRef<Vector3> point_image = asp::form_point_cloud_composite<Vector3>(opt.pointcloud_files,
-                                          asp::OrthoRasterizerView::max_subblock_size());
-
+    ImageViewRef<Vector3> point_image
+      = asp::form_point_cloud_composite<Vector3>(opt.pointcloud_files,
+                                                 asp::OrthoRasterizerView::max_subblock_size());
+    
     // Apply an (optional) rotation to the 3D points before building the mesh.
     if (opt.phi_rot != 0 || opt.omega_rot != 0 || opt.kappa_rot != 0) {
       vw_out() << "\t--> Applying rotation sequence: " << opt.rot_order
                << "      Angles: " << opt.phi_rot << "   "
                << opt.omega_rot << "  " << opt.kappa_rot << "\n";
-      point_image = asp::point_transform(point_image,
-                      math::euler_to_rotation_matrix(opt.phi_rot, opt.omega_rot,opt.kappa_rot, opt.rot_order));
+      point_image = asp::point_transform
+        (point_image, math::euler_to_rotation_matrix(opt.phi_rot, opt.omega_rot,
+                                                     opt.kappa_rot, opt.rot_order));
     }
-    // Estimate the maximum value of the error channel in case we would
-    // like to remove outliers. This not the cuttoff triangulation error,
-    // just a large but reasonable number that will be used to estimate
-    // that error later.
+
+    // Set up the error image
     ImageViewRef<double> error_image;
-    double estim_max_error = 0.0;
     if (opt.remove_outliers_with_pct || opt.max_valid_triangulation_error > 0.0){
       int num_channels = asp::num_channels(opt.pointcloud_files);
 
-      if      (num_channels == 4) error_image = asp::error_norm<4>(opt.pointcloud_files);
-      else if (num_channels == 6) error_image = asp::error_norm<6>(opt.pointcloud_files);
-      else{
+      if      (num_channels == 4) {
+        error_image = asp::error_norm<4>(opt.pointcloud_files);
+      } else if (num_channels == 6) {
+        error_image = asp::error_norm<6>(opt.pointcloud_files);
+      } else {
         vw_out() << "The point cloud files must have an equal number of channels which "
                  << "must be 4 or 6 to be able to remove outliers.\n";
         opt.remove_outliers_with_pct      = false;
         opt.max_valid_triangulation_error = 0.0;
       }
-
-      if (opt.remove_outliers_with_pct && opt.max_valid_triangulation_error == 0.0){
-        // Get a somewhat dense sampling of the error image to get an idea
-        // of what the distribution of errors is. This will be refined
-        // later using a histogram approach and using all points. Do
-        // several attempts if the sampling is too coarse.
-        bool success = false;
-        for (int count = 7; count <= 18; count++){
-
-          double sample = (1 << count);
-          int32 subsample_amt = int32(norm_2(Vector2(point_image.cols(), point_image.rows()))/sample);
-          if (subsample_amt < 1 )
-            subsample_amt = 1;
-
-          Stopwatch sw2;
-          sw2.start();
-          PixelAccumulator<asp::ErrorRangeEstimAccum> error_accum;
-          for_each_pixel( subsample(error_image, subsample_amt),
-                          error_accum,
-                          TerminalProgressCallback
-                          ("asp","Triangulation error range estimation: ") );
-          if (error_accum.size() > 0){
-            success = true;
-            estim_max_error = error_accum.value(opt.remove_outliers_params);
-          }
-          sw2.stop();
-          vw_out(DebugMessage,"asp") << "Triangulation error range estimation time: "
-                                     << sw2.elapsed_seconds() << std::endl;
-          if (success || subsample_amt == 1) break;
-          vw_out() << "Failed to estimate the triangulation range. Check if your cloud is valid. "
-                   << "Trying again with finer sampling.\n";
-        }
-      }
     }
+    
     // Determine if we should be using a longitude range between
     // [-180, 180] or [0,360]. We determine this by looking at the
     // average location of the points. If the average location has a
@@ -1347,35 +1362,49 @@ int main( int argc, char *argv[] ) {
     if (output_georef.overall_proj4_str().find("+proj=aea") == std::string::npos)
       output_georef.set_lon_center(avg_lon < 100);
 
-    // We trade off readability here to avoid ImageViewRef dereferences
+    // Convert xyz points to projected points
     // - The cartesian_to_geodetic call converts invalid (0,0,0,0) points to NaN,
     //   which is checked for in the OrthoRasterizer class.
+    ImageViewRef<Vector3> proj_points;
     if (opt.lon_offset != 0 || opt.lat_offset != 0 || opt.height_offset != 0) {
       vw_out() << "\t--> Applying offset: " << opt.lon_offset
                << " " << opt.lat_offset << " " << opt.height_offset << "\n";
-      do_software_rasterization_multi_spacing
-        (geodetic_to_point  // GDC to XYZ
-            (asp::point_image_offset  // Add user coordinate offset
-              (asp::recenter_longitude(cartesian_to_geodetic(point_image,output_georef), // XYZ to GDC, then normalize longitude
-                                       avg_lon),
-               Vector3(opt.lon_offset, opt.lat_offset, opt.height_offset)
-              ),
-             output_georef),
-         opt, output_georef, error_image, estim_max_error);
+      proj_points
+        = geodetic_to_point         // GDC to XYZ
+        (asp::point_image_offset    // Add user coordinate offset
+         (asp::recenter_longitude   // XYZ to GDC, then normalize longitude
+          (cartesian_to_geodetic(point_image, output_georef), 
+           avg_lon),
+          Vector3(opt.lon_offset, opt.lat_offset, opt.height_offset)
+          ),
+         output_georef);
     } else {
-      do_software_rasterization_multi_spacing
-        (geodetic_to_point
-            (asp::recenter_longitude
-              (cartesian_to_geodetic(point_image, output_georef),
-               avg_lon),
-             output_georef),
-        opt, output_georef, error_image, estim_max_error);
+      proj_points = geodetic_to_point(asp::recenter_longitude
+                                      (cartesian_to_geodetic(point_image, output_georef),
+                                       avg_lon),
+                                      output_georef);
     }
 
+    double estim_max_error = 0.0;
+    BBox3 estim_proj_box;
+    if (error_image.rows() > 0 && error_image.cols() > 0) {
+
+      if (error_image.cols() != point_image.cols() || error_image.rows() != point_image.rows()) 
+        vw_throw(ArgumentErr() << "The error image and point image must have the same size.");
+
+      estim_max_error = estim_max_tri_error_and_proj_box(proj_points, error_image,
+                                                         opt.remove_outliers_params,
+                                                         estim_proj_box);
+    }
+
+    // Create the DEM
+    do_software_rasterization_multi_spacing(proj_points, opt, output_georef, error_image,
+                                            estim_max_error, estim_proj_box);
+    
     // Wipe the temporary files
     for (int i = 0; i < (int)tmp_tifs.size(); i++)
       if (fs::exists(tmp_tifs[i])) fs::remove(tmp_tifs[i]);
-
+    
   } ASP_STANDARD_CATCHES;
 
   return 0;

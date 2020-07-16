@@ -2,10 +2,10 @@ include(Utilities) # Contains functions
 
 # Verify that we have a new enough compiler.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.8.5")
-    message(FATAL_ERROR "GCC version >= 4.8.5 is required!")
+  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "5.0.0")
+    message(FATAL_ERROR "GCC version >= 5.0.0 is required!")
   endif()
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
   if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "8.1.0")
     message(FATAL_ERROR "Clang version >= 8.1.0 is required!")
   endif()
@@ -21,10 +21,11 @@ project (StereoPipeline)
 
 # The line below is used by the docs/ so don't change it
 # without testing the result.  Versioning is based on https://semver.org
-set(PACKAGE_VERSION "2.7.0-alpha")
+set(PACKAGE_VERSION "2.7.0")
+#set(PACKAGE_VERSION "2.7.1-alpha")
 set(PACKAGE_NAME "NASA Ames Stereo Pipeline")
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
-set(PACKAGE_BUGREPORT "scott.t.mcmichael@nasa.gov")
+set(PACKAGE_BUGREPORT "scott.t.mcmichael@nasa.gov, oleg.alexandrov@nasa.gov")
 
 # Fetch the Git hash and store in ASP_COMMIT_ID
 execute_process(
@@ -65,7 +66,6 @@ target_link_libraries(gtest_main gtest)
 
 target_compile_definitions(gtest PRIVATE GTEST_USE_OWN_TR1_TUPLE=1)
 target_compile_definitions(gtest_main PRIVATE GTEST_USE_OWN_TR1_TUPLE=1)
-
 
 # Add all of our code
 add_subdirectory(asp)

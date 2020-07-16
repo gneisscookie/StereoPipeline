@@ -3,11 +3,9 @@
 point2mesh
 ----------
 
-The ``point2mesh`` tool produces a mesh surface that can be visualized
-in ``osgviewer``, which is a standard 3D viewing application that is
-part of the open source OpenSceneGraph package. This viewer is bundled
-with Stereo Pipeline, but the full OpenSceneGraph package can be installed 
-separately from http://www.openscenegraph.org/.
+The ``point2mesh`` tool produces a mesh file in ``.obj`` format that
+can be visualized in any mesh viewer, such as Blender or MeshLab (see
+:numref:`blender` and :numref:`meshlab` for details).
 
 Unlike DEMs, the 3D mesh is not meant to be used as a finished
 scientific product. Rather, it can be used for fast visualization to
@@ -19,69 +17,52 @@ optional texture file. For example, it can be used with
 ``stereo``, or otherwise with ``output-prefix-DEM.tif`` and
 ``output-prefix-DRG.tif``, with the latter two output by ``point2dem``.
 
-When a texture file is not provided, a 1D texture is applied in the
-local Z direction that produces a rough rendition of a contour map. In
-either case, ``point2mesh`` will produce a ``output-prefix.osgb`` file
-that contains the 3D model in OpenSceneGraph format.
+When a texture file is not provided, a constant texture is applied. (A
+mesh viewer will still show a color variation that depends on the
+local curvature of the mesh.) In either case, ``point2mesh`` will
+produce a mesh file in plain text format.
 
-Two options for ``osgviewer`` bear pointing out: the ``-l`` flag
-indicates that synthetic lighting should be activated for the model,
-which can make it easier to see fine detail in the model by providing
-some real-time, interactive hillshading. The ``-s`` flag sets the
-sub-sampling rate, and dictates the degree to which the 3D model should
-be simplified. For 3D reconstructions, this can be essential for
-producing a model that can fit in memory. The default value is 10,
+The ``-s`` (``--point-cloud-step-size``) flag sets the point cloud
+sub-sampling rate, and dictates the degree to which the 3D model
+should be simplified. For 3D reconstructions, this can be essential
+for producing a model that can fit in memory. The default value is 10,
 meaning every 10th point is used in the X and Y directions. In other
 words that mean only :math:`1/10^2` of the points are being used to
-create the model. Adjust this sampling rate according to how much detail
-is desired, but remember that large models will impact the frame rate of
-the 3D viewer and affect performance.
+create the model. Adjust this sampling rate according to how much
+detail is desired, but remember that large models will impact the
+frame rate of the 3D viewer and affect performance.
+
+The ``--texture-step-size`` flag sets the texture sub-sampling rate.
+For visualization it may be preferable for the produced cloud to be
+rather coarse but for the texture overlayed on it to have higher
+resolution. This program enforces that the cloud subsampling rate be a
+multiple of the texture subsampling rate, hence the sampled texture
+indices are a superset of the point cloud indices.
 
 Examples::
 
-     point2mesh -s 2 -l output-prefix-PC.tif output-prefix-L.tif
-     point2mesh -s 2 -l output-prefix-DEM.tif output-prefix-DRG.tif
+     point2mesh -s 2 output-prefix-PC.tif output-prefix-L.tif
+     point2mesh -s 2 output-prefix-DEM.tif output-prefix-DRG.tif
 
-To view the resulting ``output-prefix.osgb`` file use ``osgviewer``.
+     meshlab output-prefix.obj
 
-Fullscreen::
-
-    > osgviewer output-prefix.osgb
-
-In a window::
-
-    > osgviewer output-prefix.osgb --window 50 50 1000 1000
-
-Be sure to turn on lightning as soon as the model is loaded, by pressing
-on “L”. In addition, the keys T, W, and F can be used to toggle on and
-off texture, wireframe, and full-screen modes. The left, middle, and
-right mouse buttons control rotation, panning, and zooming of the model.
-
-The ``-t`` output file type option can also take the ``obj`` value, when
-it will write the mesh in the Wavefront OBJ format file
-(``output-prefix.obj``) that can be read into various 3D graphics
-programs.
+(Note that older versions of MeshLab may have a hard time opening a
+mesh if your output prefix is a directory. In that case either open
+the mesh from the GUI or change to that directory having the ``.obj``
+file first and invoke MeshLab there.)
 
 Command-line options for point2mesh:
 
 -h, --help
     Display the help message.
 
---simplify-mesh <float>
-    Run OSG Simplifier on mesh, 1.0 = 100%.
+-s, --point-cloud-step-size <integer (default: 10)>
+    Sample by picking one out of these many samples from the point cloud.
 
---smooth-mesh
-    Run OSG Smoother on mesh.
+--texture-step-size <integer (default: 2)>
+    Sample by picking one out of these many samples from the texture.
 
---use-delaunay
-    Uses the delaunay triangulator to create a surface from the
-    point cloud. This is not recommended for point clouds with noise
-    issues.
-
--s, --step <integer (default: 10)>
-    Sampling step size for the mesher.
-
---input-file <pointcloud-file>
+--input-file <point-cloud-file>
     Explicitly specify the input file.
 
 -o, --output-prefix <output-prefix>
@@ -90,12 +71,9 @@ Command-line options for point2mesh:
 --texture-file <texture-file>
     Explicitly specify the texture file.
 
--t, --output-filetype <type (default: osgb)>
-    Specify the output file type.  The type 'obj' is possible here.
-
--l, --enable-lighting
-    Enables shades and lighting on the mesh.
-
 --center
     Center the model around the origin. Use this option if you are
     experiencing numerical precision issues.
+
+--precision <integer (default: 17)>
+    How many digits of precision to save.

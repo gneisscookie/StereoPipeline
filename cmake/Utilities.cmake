@@ -32,7 +32,7 @@ function(find_external_library name search_folder inc_subfolder libNameList requ
   set(INC_NAME   "${name}_INCLUDE_DIR")
   set(ASP_NAME   "ASP_HAVE_PKG_${name}") # TODO: Remove VW/ASP name!
 
-  # Look in the BB directory if it was provided, otherwise
+  # Look in the search folder if it was provided, otherwise
   #  make halfhearted attempt to find the dependency.
   if(search_folder)
     set(${FOUND_NAME} 1)
@@ -48,18 +48,18 @@ function(find_external_library name search_folder inc_subfolder libNameList requ
       set(FULL_NAME "lib${lib}${ext}")
       set(FULL_PATH "${search_folder}/lib/${FULL_NAME}")
       if (NOT EXISTS ${FULL_PATH})
-          message("Missing library file: ${FULL_PATH}")
-	  set(FULL_PATH "${search_folder}/lib64/${FULL_NAME}")
-	  if (NOT EXISTS ${FULL_PATH})
-	      message("Missing library file: ${FULL_PATH}")
-	      set(${FOUND_NAME} 0)
-	      continue()
-	  endif()
-      else()
-          message("Found library file: ${FULL_PATH}")
+          # Try to see if maybe the lib is with an extension
+          file(GLOB LIB_FILES ${FULL_PATH}*)
+          list(GET LIB_FILES 0 FULL_PATH2) # get zero-th element
+          if (EXISTS ${FULL_PATH2})
+              set(FULL_PATH ${FULL_PATH2})
+          else()
+              message(STATUS "Missing library file: ${FULL_PATH}")
+              set(${FOUND_NAME} 0)
+              continue()
+          endif()
       endif()
-	      
-    set(${LIB_NAME} ${${LIB_NAME}} ${FULL_PATH})
+      set(${LIB_NAME} ${${LIB_NAME}} ${FULL_PATH})
     endforeach()
     
     set(${INC_NAME} ${search_folder}/include/${inc_subfolder})
@@ -70,13 +70,13 @@ function(find_external_library name search_folder inc_subfolder libNameList requ
   # Check and display our results
   if(${FOUND_NAME})
     set(${ASP_NAME} 1)
-    message("-- Found ${name} at " ${${INC_NAME}})
+    message(STATUS "Found include files for ${name} at ${${INC_NAME}}")
     include_directories("${${INC_NAME}}")
   else()
     if (${required})
       message( FATAL_ERROR "Failed to find REQUIRED library ${name}." )
     else()
-      message("Failed to find ${name}")
+      message(STATUS "Failed to find ${name}")
     endif()
   endif()
 
@@ -86,8 +86,8 @@ function(find_external_library name search_folder inc_subfolder libNameList requ
   set(${INC_NAME}   ${${INC_NAME}}   PARENT_SCOPE)
   set(${ASP_NAME}   ${${ASP_NAME}}   PARENT_SCOPE)
  
-  #message(STATUS "Found ${${LIB_NAME}}")
-  
+  message(STATUS "Found libraries for ${name} at ${${LIB_NAME}}")
+
 endfunction(find_external_library)
 
 # Define a custom make target that will run all tests with normal gtest output.
@@ -134,7 +134,8 @@ function(add_library_wrapper libName fileList testFileList dependencyList)
   # Set up the library
   add_library(${libName} SHARED ${fileList})
 
-  set_target_properties(${libName} PROPERTIES LINKER_LANGUAGE CXX)   
+  set_target_properties(${libName} PROPERTIES LINKER_LANGUAGE CXX)
+  
   #message("For ${libName}, linking DEPS: ${dependencyList}")
   target_link_libraries(${libName} ${dependencyList})
 

@@ -1147,7 +1147,7 @@ int main( int argc, char *argv[] ) {
   try {
     handle_arguments(argc, argv, opt);
 
-// TODO: Enable on OSX when clang supports OpenMP!
+    // TODO: Enable on OSX when clang supports OpenMP!
 #if (defined(ASP_OSX_BUILD) && ASP_OSX_BUILD==1)
 #else
     // Set the number of threads for OpenMP

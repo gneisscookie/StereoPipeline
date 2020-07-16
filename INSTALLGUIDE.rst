@@ -5,10 +5,10 @@ Precompiled binaries are available for the stable releases and the
 current development build.  Stereo Pipeline can also be compiled 
 from source, but this is not recommended.
 
-Precompiled Binaries (Linux and macOS)
+Precompiled binaries (Linux and macOS)
 --------------------------------------
 
-Simply download the appropriate distirbution for your operating
+Simply download the appropriate distribution for your operating
 system, extract, and run the executables in the ``bin`` subdirectory.
 No other 'installation' steps or administrative rights are necessary.
 
@@ -25,7 +25,7 @@ you can add the following line to your shell configuration (e.g.,
 on your filesystem: ``export PATH=${PATH}:/path/to/StereoPipeline/bin``
 
 
-Planetary Images
+Planetary images
 ~~~~~~~~~~~~~~~~
 
 If you plan to process images from NASA's spacecraft that are
@@ -37,13 +37,13 @@ before Stereo Pipeline programs are run for planetary data.  If you
 only want to process terrestrial Digital Globe images, skip to the
 `Quick Start for Digital Globe Users`_ section.
 
-To perform pre-processing (radiometric caligration, ephemeris
+To perform pre-processing (radiometric calibration, ephemeris
 processing, etc.), of non-terrestrial images prior to running Stereo
 Pipeline, you will need to install :term:`ISIS`.  Just as with our 
 binaries, you can use the ISIS binaries as-is.
 
 If you need to recompile, you can follow the instructions for
-`Building from Source`_ (but we don't recommend it).  If the
+`Building ASP from Source`_ (but we don't recommend it).  If the
 current version of ISIS is newer than the version of ISIS that the
 Stereo Pipeline is compiled against (listed in the ASP Release
 Notes), be assured that we're working on rolling out a new version.
@@ -55,65 +55,65 @@ camera models by the ISIS Developers. At the very least, you should
 be able to install older versions of ISIS if a failure is found.
 To do so, follow the ISIS installation instructions, but create a
 new conda environment (not the one with your current ISIS), and right
-before you would run ``conda install isis3``, run ``conda search
+before you would run ``conda install isis``, run ``conda search
 isis`` to find all of the versions of ISIS available for installation.
-For example, if you wanted to install ISIS 3.9.0, and it is available
+For example, if you wanted to install ISIS 4.1.0, and it is available
 in the ``conda search isis`` listing, you can run ``conda install
-isis3=3.9.0`` (to install that specific version of ISIS) and then
+isis=4.1.0`` (to install that specific version of ISIS) and then
 follow the remainder of the ISIS installation instructions.
 
 In closing, running the Stereo Pipeline executables only requires
 that you have downloaded the ISIS secondary data and have
-appropriately set the ``ISIS3DATA`` environment variable. This is
+appropriately set the ``ISISDATA`` environment variable. This is
 normally performed for the user by starting up the conda ISIS 
 environment.
 
-Quick Start for ISIS Users
+Quick start for ISIS users
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-#. Fetch Stereo Pipeline from
+#. Fetch Stereo Pipeline from
    https://github.com/NeoGeographyToolkit/StereoPipeline/releases
 
-#. Fetch ISIS Binaries and install, following
+#. Fetch ISIS Binaries and install, following
    https://github.com/USGS-Astrogeology/ISIS3#installation
 
-#. Fetch ISIS Data, as detailed at
+#. Fetch ISIS Data, as detailed at
    https://github.com/USGS-Astrogeology/ISIS3#the-isis-data-area
 
-#. Untar Stereo Pipeline::
+#. Untar Stereo Pipeline::
 
      tar xzvf StereoPipeline-<VERSION>-<ARCH>-<OS>.tar.gz
 
-#. Add Stereo Pipeline to Path (optional):
+#. Add Stereo Pipeline to Path (optional):
 
    - bash: ``export PATH="</path/to/StereoPipeline>/bin:${PATH}"``
    - csh: ``setenv PATH "</path/to/StereoPipeline>/bin:${PATH}"``
 
-#. Try It Out: See :numref:`moc_tutorial` for an example.
+#. Try It Out: See :numref:`moc_tutorial` for an example.
 
 
-Quick Start for Digital Globe Users
+Quick start for Digital Globe users
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-#. Fetch Stereo Pipeline from
+#. Fetch Stereo Pipeline from
    https://github.com/NeoGeographyToolkit/StereoPipeline/releases
 
-#. Untar Stereo Pipeline::
+#. Untar Stereo Pipeline::
 
      tar xzvf StereoPipeline-<VERSION>-<ARCH>-<OS>.tar.gz
 
-#. Try It Out: Processing Earth images is described in the data processing
+#. Try It Out: Processing Earth images is described in the data processing
    tutorial in :numref:`dg_tutorial`.
 
 
-Quick Start for Aerial and Historical Images
+Quick start for aerial and historical images
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Fetch the software as above. Processing images without accurate camera
 pose information is described in :numref:`sfm`.
 
 
-Common Errors
+Common errors
 -------------
 
 Here are some errors you might see, and what it could mean. Treat these
@@ -122,29 +122,11 @@ slightly different.
 
 ::
 
-   **I/O ERROR** Unable to open [$ISIS3DATA/<Some/Path/Here>].
+   **I/O ERROR** Unable to open [$ISISDATA/<Some/Path/Here>].
    Stereo step 0: Preprocessing failed
 
 You need to set up your ISIS environment or manually set the correct
-location for ``ISIS3DATA``.
-
-::
-
-   point2mesh stereo-output-PC.tif stereo-output-L.tif
-   [...]
-   99%  Vertices:   [**********************************] Complete!
-          > size: 82212 vertices
-   Drawing Triangle Strips
-   Attaching Texture Data
-   zsh: bus error  point2mesh stereo-output-PC.tif stereo-output-L.tif
-
-The source of this problem is an old version of OpenSceneGraph in your
-library path. Check your ``LD_LIBRARY_PATH`` (for Linux),
-``DYLD_LIBRARY_PATH`` (for macOS), or your ``DYLD_FALLBACK_LIBRARY_PATH``
-(for macOS) to see if you have an old version listed, and remove it from
-the path if that is the case. It is not necessary to remove the old
-versions from your computer, you just need to remove the reference to
-them from your library path.
+location for ``ISISDATA``.
 
 ::
 
@@ -153,157 +135,126 @@ them from your library path.
 You need to add the ``bin`` directory of your deployed Stereo Pipeline
 installation to the environmental variable ``PATH``.
 
+Fetching pre-compiled ASP with conda
+------------------------------------
 
-Building from Source
---------------------
+Get conda from::
 
-This method is for advanced users. You will need to fetch the Stereo
-Pipeline source code from GitHub at
-https://github.com/NeoGeographyToolkit/StereoPipeline and then
-follow these instructions.
+    https://docs.conda.io/en/latest/miniconda.html
 
-Building Stereo Pipeline from source can be difficult, due to the
-large number of dependencies, and the variety of Linux and Mac
-architectures that Stereo Pipeline supports. A separate software
-package called `BinaryBuilder
-<https://github.com/NeoGeographyToolkit/BinaryBuilder>`_ will take
-care of setting up the build environment and building the code. We
-describe below what dependencies BinaryBuilder needs and then how
-to invoke it.
+Run::
 
-Base Dependencies
-~~~~~~~~~~~~~~~~~
+    ./Miniconda3-latest-Linux-x86_64.sh
 
-Linux
-.....
+on Linux, and the appropriate version on OSX. Use the suggested::
 
-It may be potentially easier to build Stereo Pipeline and its
-dependencies in a virtual machine. How to set one up is described
-in the file VIRTMACHINES.
+    $HOME/miniconda3
 
-The following packages need to be installed in order to build
-Stereo Pipeline (this list is not exhaustive, see the precise
-commands to install dependencies below):
+directory for installation. 
 
-It is very important to note that the only GCC version that 
-ASP can be built with is gcc 5. Version 4 is too old, and some 
-dependencies do not build with version 6.
+Create an environment for ASP as::
 
-- Python (version >= 3 preferred, version >= 2.7 supported--but not for long)
-- gcc, g++, gfortran
-- cmake (version >= 3.11)
-- csh
-- libtool
-- autoconf
-- automake
-- openssl-dev
-- wget
-- curl
-- git (version >= 1.6) 
-- subversion
-- zip
-- xserver-xorg-dev
-- xorg-dev
-- libx11-dev
-- libxext-dev
-- libxmu
-- libxmu-dev
-- libxi-dev
-- libxcb-dev
-- libgl1-mesa-dev
-- libglu1-mesa-dev
-- freeglut3-dev
-- gtk2-dev
+    conda create -n asp python=3.6
+    conda activate asp
 
-If you have root access on your machine you can install them on a
-Debian-based distribution (for example Ubuntu version >= 16) using the
-following command (note that sometimes the precise names of packages
-may change and perhaps some new repository may need to be added)::
+Add relevant channels::
 
-     sudo apt-get update -y
-     sudo apt-get install -y gcc g++ gfortran tcsh libtool binutils     \
-        m4 autoconf automake libssl-dev wget curl git subversion zip    \
-        xorg-dev libx11-dev libxext-dev libxmu6 libxmu-dev libxi-dev    \
-        '^libxcb.*-dev' libx11-xcb-dev libgl1-mesa-dev libglu1-mesa-dev \
-        freeglut3-dev libgtk2.0-dev texlive-latex-base graphviz texinfo
+    conda config --env --add channels conda-forge
+    conda config --env --add channels usgs-astrogeology
+    conda config --env --add channels nasa-ames-stereo-pipeline
 
-For Red Hat-based distributions (CentOS/RHEL version >= 7) one can 
-do instead::
+Do not skip doing each of these three, even if you think you already
+have some of these channels.
 
-     sudo yum update -y
-     sudo yum -y install python gcc-c++ gcc-gfortran tcsh libtool m4 \
-        autoconf automake openssl-devel wget curl git subversion     \
-        xorg-x11-server-Xorg libX11-devel libXext-devel libXmu       \
-        libXmu-devel libXi-devel libxcb libxcb-devel xcb-util        \
-        xcb-util-devel mesa-libGL-devel freeglut-devel gtk2-devel    \
-        patch texlive texlive-latex texlive-latexextra               \
-        texlive-collection\* graphviz texinfo texinfo-tex            \
+Run::
 
-If your git install fails on Red Hat, you may need to enable the EPEL
-repository. 
+    conda config --show channels
 
-On Linux, gcc 5 can be built from scratch. Here is an example for CentOS 7::
+to ensure that the order of channels is::
 
-     sudo yum -y install gmp-devel mpfr-devel libmpc-devel glibc-devel \
-        glibc-devel.i686 zip unzip jar
-     wget https://ftp.gnu.org/gnu/gcc/gcc-5.4.0/gcc-5.4.0.tar.bz2
+    - nasa-ames-stereo-pipeline
+    - usgs-astrogeology
+    - conda-forge
+    - defaults
 
-Then unzip the archive and run in the extracted directory::
+It is possible that you may already have some of these channels in
+a global ``~/.condarc`` file, and you may be tempted to just run
+the final add channels command.  If you aren't familiar with conda
+channel management, this may have unintended consequences.  Please
+inspect the order of the output of the ``--show channels`` command
+carefully, if it is not exactly like the above, you can either edit
+the ``$CONDA_PREFIX/.condarc`` file, or delete it completely, and
+then run each of the three ``conda config --env -add channels``
+commands exactly as shown.
 
-     ./configure --prefix=$HOME/projects/gcc5 --enable-gold=yes \
-        --enable-ld=yes --disable-multilib 
-
-followed by running make and installing it.
-
-Set::
-
-     export LD_LIBRARY_PATH=<path to libstdc++ for your version compliant gcc>:$LD_LIBRARY_PATH
+We do not recommend using the ``--prepend channels`` argument, as that will
+add the ``nasa-ames-stereo-pipeline`` to your default ``~/.condarc`` file
+and will have consequences for *all* of your conda environments, which you don't
+want.
 
 
-macOS
-.....
+Install ASP with the command::
 
-First install Homebrew or Macports, if you do not already have it.
+    conda install stereo-pipeline==2.7.0
 
-Next you need the following packages:
+Check that the ``stereo`` command can be found as::
 
-- automake
-- libtool
-- openssl
-- git
-- wget 
-- curl
-- xz
+    which stereo
 
-Here's an example for how to install some of these. First read
-http://superuser.com/questions/619498/can-i-install-homebrew-without-sudo-privileges
-about how to install homebrew without sudo. Then do::
+Some variability may exist in the precise dependencies fetched by
+conda. For the record, the full environment for this release can be
+found as a set of .yaml files in the ``conda/`` subdirectory of the 
+Stereo Pipeline GitHub repository. So, alternatively, the installation can
+happen as::
 
-    export HOMEBREW_PREFIX=$HOME/usr/local
-    export PATH=$HOMEBREW_PREFIX/bin:$PATH
+    conda env create -f asp_2.7.0_linux_env.yaml
 
-    brew update
-    brew doctor
-    brew install automake libtool openssl git wget curl xz
+or::
 
-All our software is built with clang on the Mac.
+    conda env create -f asp_2.7.0_osx_env.yaml
+
+depending on your platform. Then invoke, as earlier::
+
+    conda activate asp
 
 
-Setting up ISIS dependencies via conda
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Finally, if you are working with planetary data, you need to complete
+the ISIS installation steps from this new ``asp`` conda environment.
+Your new ``asp`` environment already has the base ISIS software
+installed, but you must run the script which sets the ISIS environment
+variables and install the appropriate ISIS data files (if you also
+have a separate ISIS conda environment, you can use the set-up
+script to point the ``asp`` conda environment's ``$ISISDATA``
+environment variable to your existing data area).  For more information
+on those latter parts of ISIS installation, please find the
+`installation instructions at their repo
+<https://github.com/USGS-Astrogeology/ISIS3>`_.
 
-ASP depends heavily on :term:`ISIS` and its dependencies. The
-dependencies should be installed using conda based on the 
-instructions at: https://github.com/USGS-Astrogeology/ISIS3/wiki/Developing-ISIS3-with-cmake
 
-This is needed even if it is desired to build VisionWorkbench only.
+Building ASP from source
+------------------------
 
-One should always use the dependencies in environment.yml on all
-platforms, as we use gcc 5, rather than environment_gcc4.yml mentioned
-there for CentOS.
+This entails downloading all the ASP dependencies with conda first as
+pre-compiled binaries, then pulling the VisionWorkbench and Stereo
+Pipeline source code from GitHub, and building locally. This is
+suggested only for the very adventurous user.
+
+The environments having the ASP dependencies are in the ``conda``
+directory of the Stereo Pipeline repository, as above. After
+downloading those, one can run on Linux::
+
+    conda env create -f asp_deps_2.7.0_linux_env.yaml
+
+or on the Mac::
+
+    conda env create -f asp_deps_2.7.0_osx_env.yaml
+
+This will create an ``asp_deps`` environment. Activate it with::
+
+    conda activate asp_deps
 
 Some of the .la files created by conda point to other .la files that
-are not available.  For that reason, those files should be edited to
+are not available. For that reason, those files should be edited to
 replace::
 
     /path/to/libmylibrary.la
@@ -314,72 +265,119 @@ with::
 
 This can be done with the following commands::
 
-    cd ~/miniconda3/envs/isis3/lib
+    cd ~/miniconda3/envs/asp_deps/lib
     mkdir -p  backup
-    cp -fv  *la backup
-    perl -pi -e "s#(/[^\s]*?lib)/lib([^\s]+).la#-L\$1 -l\$2#g" *la
+    cp -fv  *.la backup # back these up
+    perl -pi -e "s#(/[^\s]*?lib)/lib([^\s]+).la#-L\$1 -l\$2#g" *.la
 
-At some point in the near future likely all dependencies, 
-including the ones installed so far in a system location using
-apt-get or yum, can likely be transitioned to using conda and 
-having them in user space.
+The Linux environment will also contain the needed C and C++
+compilers. On the Mac the compilers provided with conda did not build
+ASP correctly, hence it is suggested to use the Apple-provided clang
+and clang++.
 
+Next, set up a work directory::
 
-Invoking Binary Builder
-~~~~~~~~~~~~~~~~~~~~~~~
+    buildDir=$HOME/build_asp
+    mkdir -p $buildDir
 
-Having installed the tools, base libraries, and ISIS, the following
-lines of code will start the build of Stereo Pipeline in the
-directory ``~/projects/BinaryBuilder``::
+Building VisionWorkbench and Stereo Pipeline on Linux::
 
-    cd ~; mkdir projects; cd projects
-    git clone https://github.com/NeoGeographyToolkit/BinaryBuilder.git
-    cd BinaryBuilder
-    conda activate isis3
-    source ./auto_build/utils.sh
-    ./build.py 
+    cd $buildDir
+    ~/miniconda3/envs/asp_deps/bin/git clone \
+        git@github.com:visionworkbench/visionworkbench.git
+    cd visionworkbench
+    git checkout 2.7.0 # check out the desired commit
+    mkdir -p build
+    cd build
+    ~/miniconda3/envs/asp_deps/bin/cmake ..                                                 \
+      -DASP_DEPS_DIR=$HOME/miniconda3/envs/asp_deps                                         \
+      -DCMAKE_VERBOSE_MAKEFILE=ON                                                           \
+      -DCMAKE_INSTALL_PREFIX=$buildDir/install                                              \
+      -DBINARYBUILDER_INSTALL_DIR=$buildDir/install                                         \
+      -DCMAKE_C_COMPILER=$HOME/miniconda3/envs/asp_deps/bin/x86_64-conda_cos6-linux-gnu-gcc \
+      -DCMAKE_CXX_COMPILER=$HOME/miniconda3/envs/asp_deps/bin/x86_64-conda_cos6-linux-gnu-g++
+    make -j10
+    make install
 
-One may need to set some paths in ``./auto_build/utils.sh`` to get
-things to work.
-   
-One can specify the compilers as::
+    cd $buildDir
+    ~/miniconda3/envs/asp_deps/bin/git clone \
+    git@github.com:NeoGeographyToolkit/StereoPipeline.git
+    cd StereoPipeline
+    git checkout 2.7.0 # check out the desired commit
+    mkdir -p build
+    cd build
+    ~/miniconda3/envs/asp_deps/bin/cmake ..                                                 \
+      -DASP_DEPS_DIR=$HOME/miniconda3/envs/asp_deps                                         \
+      -DCMAKE_VERBOSE_MAKEFILE=ON                                                           \
+      -DCMAKE_INSTALL_PREFIX=$buildDir/install                                              \
+      -DBINARYBUILDER_INSTALL_DIR=$buildDir/install                                         \
+      -DCMAKE_C_COMPILER=$HOME/miniconda3/envs/asp_deps/bin/x86_64-conda_cos6-linux-gnu-gcc \
+      -DCMAKE_CXX_COMPILER=$HOME/miniconda3/envs/asp_deps/bin/x86_64-conda_cos6-linux-gnu-g++
+    make -j10
+    make install
 
-    ./build.py --cc=/path/to/gcc --cxx=/path/to/g++ --gfortran=/path/to/gfortran
+Building VisionWorkbench and ASP on OSX (just as above, but omitting the compilers)::
 
-If the conda packages were installed in a location other than
-``$HOME/miniconda3/envs/isis3``, the path to that directory should be
-set via ``--isis3-deps-dir``.
+    cd $buildDir
+    ~/miniconda3/envs/asp_deps/bin/git clone \
+      git@github.com:visionworkbench/visionworkbench.git
+    cd visionworkbench
+    git checkout 2.7.0 # check out the desired commit
+    mkdir -p build
+    cd build
+    ~/miniconda3/envs/asp_deps/bin/cmake ..                                                 \
+      -DASP_DEPS_DIR=$HOME/miniconda3/envs/asp_deps                                         \
+      -DCMAKE_VERBOSE_MAKEFILE=ON                                                           \
+      -DCMAKE_INSTALL_PREFIX=$buildDir/install                                              \
+      -DBINARYBUILDER_INSTALL_DIR=$buildDir/install
+    make -j10
+    make install
 
-Due to the amount of code that must be downloaded and built,
-BinaryBuilder will take quite a while to finish.  If you see the
-message "All done!" then it has succeeded.  Otherwise something has
-gone wrong and must be fixed before the build can continue. Often this
-is due to one of the dependencies listed earlier being too old or
-missing.
+    cd $buildDir
+    ~/miniconda3/envs/asp_deps/bin/git clone \
+      git@github.com:NeoGeographyToolkit/StereoPipeline.git
+    cd StereoPipeline
+    git checkout 2.7.0 # check out the desired commit
+    mkdir -p build
+    cd build
+    ~/miniconda3/envs/asp_deps/bin/cmake ..                                                 \
+      -DASP_DEPS_DIR=$HOME/miniconda3/envs/asp_deps                                         \
+      -DCMAKE_VERBOSE_MAKEFILE=ON                                                           \
+      -DCMAKE_INSTALL_PREFIX=$buildDir/install                                              \
+      -DBINARYBUILDER_INSTALL_DIR=$buildDir/install
+    make -j10
+    make install
 
-If the build failed and you need to restart it after finding a fix,
-the name of the individual package that needs to be built can be
-passed to ``build.py`` as an argument. Note that this tool keeps track of
-built packages in::
-
-    build_asp/done.txt
-
-so to force one to rebuild one can remove its entry from there.
-
-Once the build is successful you should make a distribution tarball to
-store the completed build. Do so using the following command from the
-BinaryBuilder directory::
-
-    ./make-dist.py last-completed-run/install
-
-
-Building Documentation
-----------------------
+Building the documentation
+--------------------------
 
 The ASP documentation is encoded in ReStructured Text and is built
 with the Sphinx-Doc system (https://www.sphinx-doc.org) with 
 sphinxcontrib-bibtex (https://sphinxcontrib-bibtex.readthedocs.io).
+These packages are already part of the `asp_deps` environment,
+but can be downloaded separately.
 
-The ``docs\`` directory contains the root of the documentation and 
-``make html`` and ``make latexpdf`` will create the HTML and PDF versions
-of the documentation.
+Note that in order to build the PDF (but not the HTML) document a full
+LaTeX distribution is also necessary, which is not installable with
+conda at this time, and whose installation may be specific to your
+system.
+
+The ``docs`` directory contains the root of the documentation. Running
+``make html`` and ``make latexpdf`` there will create the HTML and PDF
+versions of the documentation in the _build subdirectory. In
+particular, the PDF document will be at::
+
+  ./_build/latex/asp_book.pdf
+
+Building the ASP dependencies
+-----------------------------
+
+The feedstocks for all the conda packages that are custom-built for
+ASP are at::
+
+  https://github.com/NeoGeographyToolkit
+
+Care must be taken to ensure that all the entries in the meta.yaml
+files in each recipe have versions that are consistent among
+themselves and with what ISIS expects, or else conda will fail to
+build things properly (and often very late in the process).

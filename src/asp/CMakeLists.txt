@@ -7,20 +7,29 @@ include(Utilities) # Contains functions
 # Configuration options
 
 # --- Directory paths ---
-set(BINARYBUILDER_INSTALL_DIR "" CACHE FILEPATH "Path to Binary Builder installation directory")
-set(VISIONWORKBENCH_INSTALL_DIR "" CACHE FILEPATH "Path to Binary Builder installation directory")
+set(BINARYBUILDER_INSTALL_DIR "" CACHE FILEPATH "Path to the Binary Builder installation directory containing user-compiled dependencies")
+set(VISIONWORKBENCH_INSTALL_DIR "" CACHE FILEPATH "Path to the user-built and installed VisionWorkbench")
+set(ASP_DEPS_DIR "" CACHE FILEPATH "Path to the conda environment that has the ASP dependencies")
+
 set(ASP_ENABLE_SSE "1" CACHE BOOL "Allow SSE optimizations.")
 
 if ("${BINARYBUILDER_INSTALL_DIR}" STREQUAL "")
   message(FATAL_ERROR "You need to set BINARYBUILDER_INSTALL_DIR")
 endif()
 
-# Make an abbreviation for this long name
-set(bbdir ${BINARYBUILDER_INSTALL_DIR})
-
-if ("${ISIS3_DEPS_DIR}" STREQUAL "")
-  message(FATAL_ERROR "You need to set ISIS3_DEPS_DIR")
+if ("${ASP_DEPS_DIR}" STREQUAL "")
+  message(FATAL_ERROR "You need to set ASP_DEPS_DIR")
 endif()
+# # assume built-in pthreads on MacOS
+# IF(APPLE)
+#     set(CMAKE_THREAD_LIBS_INIT "-lpthread")
+#     set(CMAKE_HAVE_THREADS_LIBRARY 1)
+#     set(CMAKE_USE_WIN32_THREADS_INIT 0)
+#     set(CMAKE_USE_PTHREADS_INIT 1)
+#     set(THREADS_PREFER_PTHREAD_FLAG ON)
+# ENDIF()
+    
+find_package(Threads REQUIRED)
 
 # Put the search for Boost early on, to ensure that the Conda version
 # is found before we point to the BB folder.
@@ -28,31 +37,21 @@ endif()
 # Define boost requirements
 message("--------------------------------------------------------------")
 message("Searching for boost...")
-set(BOOST_MIN_VERSION "1.65")
+set(BOOST_VERSION "1.68") # This is fragile, but it keeps on finding Boost 1.72.
 set(REQUIRED_BOOST_LIBS program_options system filesystem regex date_time thread iostreams)
-#set(Boost_DEBUG 1) # Uncomment for useful finding boost debug output
-#if(BINARYBUILDER_INSTALL_DIR) # Look in BinaryBuilder directory
-if(ISIS3_DEPS_DIR) # Look in BinaryBuilder directory
-  set(BOOST_ROOT       "${ISIS3_DEPS_DIR}")
-  set(BOOST_LIBRARYDIR "${ISIS3_DEPS_DIR}/lib")
-  set(BOOST_INCLUDEDIR "${ISIS3_DEPS_DIR}/include")
-
-  #DBoost_INCLUDE_DIR=$HOME/projects/BinaryBuilder/build_asp/install/include/boost-1_67
-
-  #set(BOOST_ROOT       "${BINARYBUILDER_INSTALL_DIR}")
-  #set(BOOST_LIBRARYDIR "${BINARYBUILDER_INSTALL_DIR}/lib")
-  #set(BOOST_INCLUDEDIR "${BINARYBUILDER_INSTALL_DIR}/include/boost-1_67")
-
+if (ASP_DEPS_DIR) # Look in BinaryBuilder directory
+  set(BOOST_ROOT       "${ASP_DEPS_DIR}")
+  set(BOOST_LIBRARYDIR "${ASP_DEPS_DIR}/lib")
+  set(BOOST_INCLUDEDIR "${ASP_DEPS_DIR}/include")
+  set(Boost_NO_SYSTEM_PATHS ON) # Do not search anywhere else
   set(Boost_DEBUG ON)
   set(Boost_DETAILED_FAILURE_MSG ON)
   #set(CMAKE_CXX_COMPILER_ARCHITECTURE_ID "x64")
-  #set(Boost_NO_SYSTEM_PATHS ON) #This seems to confuse boost
 endif()  
 # Now search for Boost using the available information
-find_package(Boost ${BOOST_MIN_VERSION} REQUIRED COMPONENTS ${REQUIRED_BOOST_LIBS})
+find_package(Boost ${BOOST_VERSION} EXACT REQUIRED COMPONENTS ${REQUIRED_BOOST_LIBS})
 
 if(Boost_FOUND)
-    #set(Boost_LIBRARY_DIR ${BINARYBUILDER_INSTALL_DIR}/lib) # Override this value
     message("Successfully found Boost version ${Boost_VERSION}.")
     message("Boost include dir = ${Boost_INCLUDE_DIR}")
     message("Boost library dir = ${Boost_LIBRARY_DIRS}")
@@ -66,7 +65,8 @@ message("--------------------------------------------------------------")
 #link_directories(${BINARYBUILDER_INSTALL_DIR}/lib)
 #link_directories(${BINARYBUILDER_INSTALL_DIR}/lib64)
 
-# If VW path is provided, use that instead of the BB install dir.
+# If VW was not built and installed separately, it should have been
+# built and installed in BINARYBUILDER_INSTALL_DIR.
 if (NOT VISIONWORKBENCH_INSTALL_DIR)
   set(VISIONWORKBENCH_INSTALL_DIR ${BINARYBUILDER_INSTALL_DIR})
 endif()
@@ -86,7 +86,7 @@ option(BUILD_SHARED_LIBS "Produce shared libraries." TRUE)
 SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # Make sure installed files can find installed libraries
-SET(CMAKE_INSTALL_RPATH ${CMAKE_INSTALL_RPATH} ${CMAKE_INSTALL_PREFIX}/lib ${ISIS3_DEPS_DIR}/lib ${ISIS3_DEPS_DIR}/lib64)
+SET(CMAKE_INSTALL_RPATH ${CMAKE_INSTALL_RPATH} ${CMAKE_INSTALL_PREFIX}/lib ${ASP_DEPS_DIR}/lib)
 
 # --- Fixed options ---
 set(Boost_USE_STATIC_LIBS   OFF)
@@ -159,23 +159,13 @@ endforeach(n)
 include_directories(${VISIONWORKBENCH_INCLUDE_DIR})
 #link_directories(${VISIONWORKBENCH_LIBRARY_DIR})
 
-
-# TODO: Add DLL to our main Boost installation.
-#include_directories("/home6/oalexan1/projects/usgscsm/boost_1_70_0/boost")
-#include_directories("/home/smcmich1/repo/CSM-CameraModel/install/include")
-#include_directories("/home/smcmich1/repo/CSM-Swig/install/include")
-#set(CSM_LIBRARIES "/home/smcmich1/repo/CSM-Swig/install/lib/libfixturecsm.so")
-
-#include_directories("/home/smcmich1/repo/csm-3.0.3.1/linux64/include")
-#set(CSM_LIBRARIES "/home/smcmich1/repo/csm-3.0.3.1/linux64/lib/libcsmapi.so.3")
-
 message("--------------------------------------------------------------")
 message("Searching for QT...")
 # QT is complicated to use and should go through find_package
-set(QT_QMAKE_EXECUTABLE  ${BINARYBUILDER_INSTALL_DIR}/bin/qmake)
-set(QT_MOC_EXECUTABLE    ${BINARYBUILDER_INSTALL_DIR}/bin/moc)
-set(QT_RCC_EXECUTABLE    ${BINARYBUILDER_INSTALL_DIR}/bin/rcc)
-set(QT_UIC_EXECUTABLE    ${BINARYBUILDER_INSTALL_DIR}/bin/uic)
+set(QT_QMAKE_EXECUTABLE  ${ASP_DEPS_DIR}/bin/qmake)
+set(QT_MOC_EXECUTABLE    ${ASP_DEPS_DIR}/bin/moc)
+set(QT_RCC_EXECUTABLE    ${ASP_DEPS_DIR}/bin/rcc)
+set(QT_UIC_EXECUTABLE    ${ASP_DEPS_DIR}/bin/uic)
 
 set(REQUIRED_QT_COMPONENTS  Core                Concurrent
                             Gui                 Multimedia
@@ -186,19 +176,9 @@ set(REQUIRED_QT_COMPONENTS  Core                Concurrent
                             Sql                 Svg
                             Test                Widgets
                             Xml                 XmlPatterns)
-find_package(Qt5 5.6.3 COMPONENTS ${REQUIRED_QT_COMPONENTS} REQUIRED)
+find_package(Qt5 5.9.6 COMPONENTS ${REQUIRED_QT_COMPONENTS} REQUIRED)
 
 if(Qt5_FOUND)
-
-    #message("QT_USE_FILE = ${QT_USE_FILE}")
-    #include(${QT_USE_FILE}) # Required after using QT find command
-    #message("QT include dirs  " ${QT_INCLUDES})
-
-    ## By default only QtCore and QtGui modules are enabled
-    ## other modules must be enabled like this:
-    #SET( QT_USE_QT3SUPPORT TRUE )   
-    #SET( QT_USE_QTXML TRUE )
-
     # We need this to be able to include headers produced by uic in our
     # code (CMAKE_BINARY_DIR holds a path to the build directory, while
     # INCLUDE_DIRECTORIES() works just like INCLUDEPATH from qmake)
@@ -208,8 +188,10 @@ if(Qt5_FOUND)
 endif(Qt5_FOUND)
 message("--------------------------------------------------------------")
 
-find_external_library(QWT ${ISIS3_DEPS_DIR} "" "qwt" REQUIRED)
+find_external_library(QWT ${ASP_DEPS_DIR} "" "qwt" REQUIRED)
 
+# For Apple this somehow still gets picked up even though
+# it figures as not found.
 find_package(OpenMP)
 if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
@@ -219,76 +201,64 @@ endif()
 
 # Dependencies for VW
 
-if (APPLE) # Use the system version
-  find_package(LAPACK)
-  find_package(BLAS)
-else() # Use our BB compiled version
-  find_external_library(LAPACK ${ISIS3_DEPS_DIR} "" "lapack;blas" REQUIRED)
-endif()
-if(LAPACK_FOUND)
-  set(VW_HAVE_PKG_FLAPACK 1) # --> This specifies that it is a Fortran derived version
-                             #      How to check this if the user provides Fortran?
-endif()
+# if (APPLE) # Use the system version
+#   find_package(LAPACK)
+#   find_package(BLAS)
+# else() # Use our BB compiled version
+find_external_library(LAPACK ${ASP_DEPS_DIR} "" "lapack;blas" REQUIRED)
+#endif()
+#if(LAPACK_FOUND)
+set(VW_HAVE_PKG_FLAPACK 1) # --> This specifies that it is a Fortran derived version
+#                            #      How to check this if the user provides Fortran?
+#endif()
 
-find_external_library(FLANN ${bbdir} "" "flann_cpp" REQUIRED)
-find_external_library(Z ${ISIS3_DEPS_DIR} "" "z" REQUIRED)
-find_external_library(PROJ4 ${ISIS3_DEPS_DIR} "" "proj"      REQUIRED)
-
-find_external_library(GDAL ${bbdir} "" "gdal"      REQUIRED)
+find_external_library(FLANN   ${ASP_DEPS_DIR} "" "flann_cpp" REQUIRED)
+find_external_library(Z       ${ASP_DEPS_DIR} "" "z"         REQUIRED)
+find_external_library(PROJ4   ${ASP_DEPS_DIR} "" "proj"      REQUIRED)
+find_external_library(JPEG    ${ASP_DEPS_DIR} "" "jpeg"      REQUIRED)
+find_external_library(PNG     ${ASP_DEPS_DIR} "" "png;png16" REQUIRED)
+find_external_library(TIFF    ${ASP_DEPS_DIR} "" "tiff"      REQUIRED)
+find_external_library(GEOTIFF ${ASP_DEPS_DIR} "" "geotiff"   REQUIRED)
+find_external_library(GDAL    ${ASP_DEPS_DIR} "" "gdal"      REQUIRED)
 set(ILMBASE_LIB_NAMES Half Iex Imath IlmThread)
-find_external_library(ILMBASE ${bbdir} "" "${ILMBASE_LIB_NAMES}" REQUIRED)
-find_external_library(OPENEXR ${bbdir} "OpenEXR" "IlmImf;IlmThread" REQUIRED)
+find_external_library(ILMBASE ${ASP_DEPS_DIR} "" "${ILMBASE_LIB_NAMES}" REQUIRED)
+find_external_library(OPENEXR ${ASP_DEPS_DIR} "OpenEXR" "IlmImf;IlmThread" REQUIRED)
 
-# Dependencies for ASP and ISIS
-find_external_library(SPICE ${bbdir} "naif" "cspice" REQUIRED)
-#find_external_library(SPICE ${ISIS3_DEPS_DIR} "" "cspice" REQUIRED)
-find_external_library(GEOID ${bbdir} "" "egm2008" REQUIRED)
-find_external_library(XERCESC ${ISIS3_DEPS_DIR} "" "xerces-c" REQUIRED)
-find_external_library(PROTOBUF ${ISIS3_DEPS_DIR} "" "protobuf" REQUIRED)
-find_external_library(EMBREE ${ISIS3_DEPS_DIR} "" "embree" REQUIRED)
-find_external_library(EIGEN ${ISIS3_DEPS_DIR} "eigen3" "" REQUIRED)
-find_external_library(CERES ${bbdir} "ceres" "ceres" REQUIRED)
-find_external_library(LIBPOINTMATCHER ${bbdir} "" "pointmatcher" REQUIRED)
-find_external_library(FASTGLOBALREGISTRATION ${bbdir} "FastGlobalRegistration" "FastGlobalRegistrationLib" REQUIRED)
-find_external_library(LIBLAS ${bbdir} "" "las" REQUIRED)
-find_external_library(LASZIP ${bbdir} "laszip" "laszip" REQUIRED)
-find_external_library(GFLAGS ${bbdir} "gflags" "gflags" REQUIRED)
-find_external_library(GLOG ${bbdir} "glog" "glog" REQUIRED)
-find_external_library(ARMADILLO ${ISIS3_DEPS_DIR} "" "armadillo" REQUIRED)
+find_external_library(SPICE ${ASP_DEPS_DIR} "cspice" "cspice" REQUIRED)
+find_external_library(GEOID ${ASP_DEPS_DIR} "" "egm2008" REQUIRED)
+find_external_library(XERCESC ${ASP_DEPS_DIR} "" "xerces-c" REQUIRED)
+find_external_library(PROTOBUF ${ASP_DEPS_DIR} "" "protobuf" REQUIRED)
+find_external_library(EMBREE ${ASP_DEPS_DIR} "" "embree" REQUIRED)
+find_external_library(EIGEN ${ASP_DEPS_DIR} "eigen3" "" REQUIRED)
+find_external_library(CERES ${ASP_DEPS_DIR} "ceres" "ceres" REQUIRED)
+find_external_library(LIBNABO ${ASP_DEPS_DIR} "nabo" "nabo" REQUIRED)
+find_external_library(LIBPOINTMATCHER ${ASP_DEPS_DIR} "" "pointmatcher" REQUIRED)
+find_external_library(FASTGLOBALREGISTRATION ${ASP_DEPS_DIR} "FastGlobalRegistration" "FastGlobalRegistrationLib" REQUIRED)
+find_external_library(LIBLAS ${ASP_DEPS_DIR} "" "las" REQUIRED)
+find_external_library(LASZIP ${ASP_DEPS_DIR} "laszip" "laszip" REQUIRED)
+find_external_library(GFLAGS ${ASP_DEPS_DIR} "gflags" "gflags" REQUIRED)
+find_external_library(GLOG ${ASP_DEPS_DIR} "glog" "glog" REQUIRED)
+find_external_library(ARMADILLO ${ASP_DEPS_DIR} "" "armadillo" REQUIRED)
 
-find_external_library(ISIS ${bbdir} "isis3" "isis3" REQUIRED)
-include_directories("${bbdir}/include/isis3")
+find_external_library(ISIS ${ASP_DEPS_DIR} "isis" "isis" REQUIRED)
 
 if(ASP_HAVE_PKG_ISIS)
   # Pull the ISIS version. It is on the first line before the first space.
-  file(STRINGS "${bbdir}/version" MY_STRING LIMIT_COUNT 1)
+  file(STRINGS "${ASP_DEPS_DIR}/version" MY_STRING LIMIT_COUNT 1)
   string(REPLACE " " ";" MY_LIST ${MY_STRING}) # split by space and store into MY_LIST
   list(GET MY_LIST 0 ASP_ISIS_VERSION)
   set(ASP_HAVE_PKG_ISISIO 1)
   message(STATUS "Found ISIS version: ${ASP_ISIS_VERSION}")
 endif()
 
-find_external_library(CSM ${bbdir} "libusgscsm" "csmapi" REQUIRED)
-#include_directories("${bbdir}/include")
-#set(CSM_LIBRARIES "/home6/oalexan1/projects/usgscsm/build/csm/libcsmapi.so.3")
+find_external_library(CSM ${ASP_DEPS_DIR} "libusgscsm" "csmapi" REQUIRED)
+#include_directories("${ASP_DEPS_DIR}/include")
 
 set(PCL_LIB_NAMES pcl_common pcl_features pcl_filters pcl_io_ply pcl_io
                   pcl_kdtree pcl_keypoints pcl_ml pcl_octree pcl_recognition
                   pcl_registration pcl_sample_consensus pcl_search pcl_segmentation
                   pcl_stereo pcl_surface pcl_tracking)
-find_external_library(PCL ${ISIS3_DEPS_DIR} "pcl" "${PCL_LIB_NAMES}" REQUIRED)
-
-
-set(OPENSCENEGRAPH_LIB_NAMES osgAnimation osgDB osgFX osgGA osgManipulator
-                             osgParticle osgPresentation osgShadow osgSim OpenThreads
-                             osg osgTerrain osgText osgUtil osgViewer osgVolume osgWidget)
-find_external_library(OPENSCENEGRAPH ${bbdir} "" "${OPENSCENEGRAPH_LIB_NAMES}" REQUIRED)
-
-# TODO: Which do we actually need!
-#find_external_library(JPEG ${bbdir} "" "jpeg" NOT_REQUIRED)
-#find_external_library(PNG ${bbdir} "" "png;png16" NOT_REQUIRED)
-#find_external_library(TIFF ${bbdir} "" "tiff" NOT_REQUIRED)
-
+find_external_library(PCL ${ASP_DEPS_DIR} "pcl" "${PCL_LIB_NAMES}" REQUIRED)
 
 set(OPENCV_LIB_NAMES opencv_calib3d     opencv_reg
                      opencv_core        opencv_shape
@@ -301,13 +271,14 @@ set(OPENCV_LIB_NAMES opencv_calib3d     opencv_reg
                      opencv_ml          opencv_ximgproc
                      opencv_objdetect   opencv_xobjdetect
                      opencv_photo       opencv_xphoto)
-find_external_library(OPENCV ${ISIS3_DEPS_DIR} "" "${OPENCV_LIB_NAMES}" NOT_REQUIRED)
+find_external_library(OPENCV ${ASP_DEPS_DIR} "" "${OPENCV_LIB_NAMES}" NOT_REQUIRED)
 
 # For convenience, list some libraries that VW and ISIS depend on.
-set(VW_3RD_PARTY_LIBS   ${Z_LIBRARIES} ${OPENCV_LIBRARIES} ${ILMBASE_LIBRARIES} ${OPENEXR_LIBRARIES}
-                        ${GDAL_LIBRARIES} ${LAPACK_LIBRARIES} ${Boost_LIBRARIES}  ${PROJ4_LIBRARIES}
-                        ${FLANN_LIBRARIES} )
-set(ISIS_3RD_PARTY_LIBS Qt5::Core  ${EMBREE_LIBRARIES} ${PROTOBUF_LIBRARIES} ${QWT_LIBRARIES} ${ARMADILLO_LIBRARIES})
+set(VW_3RD_PARTY_LIBS ${Z_LIBRARIES} ${OPENCV_LIBRARIES} ${ILMBASE_LIBRARIES} ${OPENEXR_LIBRARIES}
+    ${GDAL_LIBRARIES} ${LAPACK_LIBRARIES} ${Boost_LIBRARIES}  ${PROJ4_LIBRARIES}
+    ${GEOTIFF_LIBRARIES}  ${JPEG_LIBRARIES} ${TIFF_LIBRARIES} ${PNG_LIBRARIES}
+    ${FLANN_LIBRARIES})
+set(ISIS_3RD_PARTY_LIBS Qt5::Core ${EMBREE_LIBRARIES} ${PROTOBUF_LIBRARIES} ${QWT_LIBRARIES} ${ARMADILLO_LIBRARIES})
 
 message("--------------------------------------------------------------")
 
@@ -344,7 +315,7 @@ endforeach()
 # --- ASP_CORE ------------------------------------------------------------
 get_all_source_files( "Core"       ASP_CORE_SRC_FILES)
 get_all_source_files( "Core/tests" ASP_CORE_TEST_FILES)
-set(ASP_CORE_LIB_DEPENDENCIES ${VW_3RD_PARTY_LIBS} ${VISIONWORKBENCH_LIBRARIES} ${LIBLAS_LIBRARIES} ${LASZIP_LIBRARIES})
+set(ASP_CORE_LIB_DEPENDENCIES ${VW_3RD_PARTY_LIBS} ${VISIONWORKBENCH_LIBRARIES} ${LIBLAS_LIBRARIES} ${LASZIP_LIBRARIES} ${OpenMP_CXX_LIBRARIES} ${CMAKE_DL_LIBS})
 
 # --- ASP_SPICEIO ------------------------------------------------------------
 get_all_source_files( "SpiceIO"       ASP_SPICEIO_SRC_FILES)
@@ -360,7 +331,7 @@ set(ASP_ISISIO_LIB_DEPENDENCIES  AspCore ${ISIS_3RD_PARTY_LIBS} ${ISIS_LIBRARIES
 # --- ASP_CAMERA ------------------------------------------------------------
 get_all_source_files( "Camera"       ASP_CAMERA_SRC_FILES)
 get_all_source_files( "Camera/tests" ASP_CAMERA_TEST_FILES)
-set(ASP_CAMERA_LIB_DEPENDENCIES AspCore ${XERCESC_LIBRARIES} ${CSM_LIBRARIES} ${CMAKE_DL_LIBS})
+set(ASP_CAMERA_LIB_DEPENDENCIES AspCore ${XERCESC_LIBRARIES} ${CSM_LIBRARIES})
 
 # --- ASP_SESSIONS ------------------------------------------------------------
 ## This code is more complicated and is specified in the lower level file
@@ -387,20 +358,8 @@ add_subdirectory(Sessions)
 add_subdirectory(GUI)
 
 # Add the non-library subdirectories
-
 add_subdirectory(Python)
 add_subdirectory(Tools)
 add_subdirectory(WVCorrect)
 add_subdirectory(Hidden)
 add_subdirectory(IceBridge)
-
-
-
-
-
-
-
-
-
-
-

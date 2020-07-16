@@ -24,15 +24,24 @@
 #include <boost/dll.hpp>
 #include <boost/dll/runtime_symbol_info.hpp>
 #include <boost/filesystem.hpp>
-
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/version.hpp>
+#include <boost/config.hpp>
 
 // From the CSM base interface library
 #include <csm/csm.h>
 #include <csm/Plugin.h>
 #include <csm/RasterGM.h>
+#include <json/json.hpp>
 
 namespace dll = boost::dll;
 namespace fs = boost::filesystem;
+using json = nlohmann::json;
+
+// This was discussed with the USGS folks. To convert from ISIS to ASP
+// pixels we subtract 1.0. To convert from CSM pixels we have to
+// subtract only 0.5.
+const vw::Vector2 ASP_TO_CSM_SHIFT(0.5, 0.5);
 
 using namespace vw;
 
@@ -40,10 +49,8 @@ namespace asp {
 
 vw::Mutex csm_init_mutex;
 
-
 // -----------------------------------------------------------------
 // Helper functions
-
 
 csm::EcefCoord vectorToEcefCoord(Vector3 v) {
   csm::EcefCoord c;
@@ -87,7 +94,7 @@ Vector2 imageCoordToVector(csm::ImageCoord c) {
 // -----------------------------------------------------------------
 // CsmModel class functions
 
-CsmModel::CsmModel() {
+  CsmModel::CsmModel():m_semi_major_axis(0.0), m_semi_minor_axis(0.0) {
 }
 
 CsmModel::CsmModel(std::string const& isd_path) {
@@ -106,19 +113,19 @@ bool CsmModel::file_has_isd_extension(std::string const& path) {
 std::string CsmModel::get_csm_plugin_folder(){
 
   // Look up the CSM_PLUGIN_PATH environmental variable.
-  // - It is set in the "libexec/libexec-funcs.sh" deployed file.
+  // It is set in the "libexec/libexec-funcs.sh" deploy file.
 
   std::string plugin_path;
   char * plugin_path_arr = getenv("CSM_PLUGIN_PATH");
   if (plugin_path_arr != NULL && std::string(plugin_path_arr) != ""){
     plugin_path = std::string(plugin_path_arr);
   }else{
-    // This is for the installed but not packaged build.
-    vw_out() << "The environmental variable CSM_PLUGIN_PATH was not set.\n";
+    // This is for when ASP is installed without the deploy file.
+    // vw_out() << "The environmental variable CSM_PLUGIN_PATH was not set.\n";
     fs::path try_path = boost::dll::program_location().parent_path().parent_path();
-    try_path /= "lib64";
+    try_path /= "lib";
     plugin_path = try_path.string();
-    vw_out() << "Looking in " << plugin_path << ".\n";
+    //vw_out() << "Looking in " << plugin_path << ".\n";
   }
 
   if (!fs::exists(plugin_path)){
@@ -129,22 +136,50 @@ std::string CsmModel::get_csm_plugin_folder(){
   return plugin_path;
 }
 
-
+// The original idea here was to look at every library in the plugins
+// directory and load the valid plugins. For now however there is just
+// one plugin, libusgscsm, and it is stored in 'lib', among thousands
+// of other inapplicable libraries. Hence just pick that one.  One day
+// we will have a dedicated plugins directory.
 size_t CsmModel::find_csm_plugins(std::vector<std::string> &plugins) {
+
   plugins.clear();
+
   const std::string folder = get_csm_plugin_folder();
 
-  size_t num_dlls = vw::get_files_in_folder(folder, plugins, ".so");
-  if (num_dlls == 0) // Try again using the Mac extension.
-    num_dlls = vw::get_files_in_folder(folder, plugins, ".dylib");
+  std::string ext;
+  std::vector<std::string> potential_plugins;
+  std::string platform = std::string(BOOST_PLATFORM);
+  boost::to_lower(platform);
+  if (std::string(platform).find("linux") != std::string::npos)
+    ext = ".so";
+  else if (std::string(platform).find("mac") != std::string::npos) 
+    ext = ".dylib";
+  else
+    vw_throw( ArgumentErr() << "Unknown operating system: " << BOOST_PLATFORM << "\n");
 
-  for (size_t i=0; i<num_dlls; ++i) {
+#if 0
+  size_t potential_num_dlls = vw::get_files_in_folder(folder, potential_plugins, ext);
+  for (size_t i = 0; i < potential_num_dlls; i++) {
+    if (potential_plugins[i] != "libusgscsm" + ext) {
+      continue;
+    }
+    
     fs::path p(folder);
-    p /= plugins[i];
-    plugins[i] = p.string();
+    p /= potential_plugins[i];
+    plugins.push_back(p.string());
   }
+#endif
 
-  return num_dlls;
+  fs::path p(folder);
+  p /= "libusgscsm" + ext;
+  std::string plugin = p.string();
+  if (!fs::exists(plugin)) 
+    vw_throw( ArgumentErr() << "Cannot find plugin: " <<plugin <<
+              ". Set CSM_PLUGIN_PATH to the directory where the plugins are stored.\n");
+  plugins.push_back(plugin);
+
+  return plugins.size();
 }
 
 
@@ -164,9 +199,7 @@ void CsmModel::print_available_models() {
     }
   }
 }
-
-
-
+      
 // This function is not kept out of the header file to hide CSM dependencies.
 /// Look through all of the loaded plugins and find one that is compatible with
 ///  the provided ISD.
@@ -177,8 +210,8 @@ const csm::Plugin* find_plugin_for_isd(csm::Isd const& support_data,
 
   // Loop through the available plugins.
   csm::PluginList::iterator iter;
-  csm::PluginList available_plugins = csm::Plugin::getList();
-  for (iter=available_plugins.begin(); iter!=available_plugins.end(); ++iter) {
+  csm::PluginList plugins = csm::Plugin::getList();
+  for (iter=plugins.begin(); iter!=plugins.end(); ++iter) {
     const csm::Plugin* csm_plugin = (*iter);
 
     // For each plugin, loop through the available models.
@@ -215,8 +248,8 @@ void CsmModel::initialize_plugins() {
   vw::Mutex::Lock lock(csm_init_mutex);
 
   // If we already have plugins loaded, don't do initialization again.
-  csm::PluginList available_plugins = csm::Plugin::getList();
-  if (!available_plugins.empty())
+  csm::PluginList plugins = csm::Plugin::getList();
+  if (!plugins.empty())
     return;
 
   vw_out() << "Initializing CSM plugins...\n";
@@ -239,8 +272,54 @@ void CsmModel::initialize_plugins() {
   print_available_models();
 }
 
+// Read the semi-major and semi-minor axes
+void CsmModel::read_ellipsoid(std::string const& isd_path) {
 
-bool CsmModel::load_model(std::string const& isd_path) {
+  // Load and parse the json file
+  std::ifstream ifs(isd_path);
+  json json_isd;
+  ifs >> json_isd;
+
+  // Read the semi-major axis
+  m_semi_major_axis = 0.0;
+  try {
+    m_semi_major_axis = json_isd.at("radii").at("semimajor");
+  } catch (...){
+  }
+
+  // Read the semi-minor axis
+  m_semi_minor_axis = 0.0;
+  try {
+    m_semi_minor_axis = json_isd.at("radii").at("semiminor");
+  } catch (...){
+  }
+
+  // Read the unit
+  std::string unit;
+  try {
+    unit = json_isd.at("radii").at("unit");
+  } catch (...){
+  }
+  boost::to_lower(unit);
+
+  // Convert from km to m if need be
+  if (unit == "km") {
+    m_semi_major_axis *= 1000.0;
+    m_semi_minor_axis *= 1000.0;
+  } else if (unit != "m") {
+    vw::vw_throw( vw::ArgumentErr() << "Unknown unit for the ellipsoid radii in "
+                  << isd_path << ". The read value is: " << unit);
+  }
+
+  // Sanity check
+  if (m_semi_major_axis <= 0.0 || m_semi_minor_axis <= 0.0) 
+    vw::vw_throw( vw::ArgumentErr() << "Could not read positive semi-major "
+                  << "and semi-minor axies from:  " << isd_path
+                  << ". The read values are: "
+                  << m_semi_major_axis << ' ' << m_semi_minor_axis);
+}
+
+void CsmModel::load_model(std::string const& isd_path) {
 
   // This only happens the first time it is called.
   initialize_plugins();
@@ -248,9 +327,12 @@ bool CsmModel::load_model(std::string const& isd_path) {
   // Load ISD data
   csm::Isd support_data(isd_path);
 
+  CsmModel::read_ellipsoid(isd_path);
+  
   // Check each available CSM plugin until we find one that can handle the ISD.
   std::string model_name, model_family;
-  const csm::Plugin* csm_plugin = find_plugin_for_isd(support_data, model_name, model_family, false);
+  const csm::Plugin* csm_plugin = find_plugin_for_isd(support_data, model_name,
+                                                      model_family, false);
 
   // If we did not find a plugin that would work, go through them again and print error
   //  messages for each plugin that fails.
@@ -285,6 +367,7 @@ bool CsmModel::load_model(std::string const& isd_path) {
     vw::vw_throw( vw::ArgumentErr() << "Failed to cast CSM sensor model to raster type!");
 
   m_csm_model.reset(raster_model); // We will handle cleanup of the model.
+
   std::cout << "Done setting up the CSM model\n";
 }
 
@@ -327,14 +410,14 @@ Vector2 CsmModel::point_to_pixel (Vector3 const& point) const {
       vw_out() << "CSM Warning: " << w_iter->getMessage() << std::endl;
     }
   }
-  
-  return imageCoordToVector(imagePt);
+
+  return imageCoordToVector(imagePt) - ASP_TO_CSM_SHIFT;
 }
 
 Vector3 CsmModel::pixel_to_vector(Vector2 const& pix) const {
   throw_if_not_init();
 
-  csm::ImageCoord imagePt = vectorToImageCoord(pix);
+  csm::ImageCoord imagePt = vectorToImageCoord(pix + ASP_TO_CSM_SHIFT);
 
   // This function generates the vector from the camera at the camera origin,
   //  there is a different call that gets the vector near the ground.
@@ -350,9 +433,9 @@ Vector3 CsmModel::pixel_to_vector(Vector2 const& pix) const {
 Vector3 CsmModel::camera_center(Vector2 const& pix) const {
   throw_if_not_init();
 
-  csm::ImageCoord imagePt = vectorToImageCoord(pix);
+  csm::ImageCoord imagePt = vectorToImageCoord(pix + ASP_TO_CSM_SHIFT);
   csm::EcefCoord  ecef    = m_csm_model->getSensorPosition(imagePt);
-
+  
   return ecefCoordToVector(ecef);
 }
 
